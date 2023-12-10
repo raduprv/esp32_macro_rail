@@ -2,12 +2,12 @@ This project uses an ESP32 to control a bipolar stepper motor that moves a rail 
 Alternatively, you can mount the camera perpendicular to the rail for stuff like stop motion animation.
 The code can remotely trigger a cellphone via built in BT keyboard, Canon, Panasonic and Olympus cameras via Wi-Fi and Canon and Nikon cameras by IR (although I didn't test it on Nikon cameras because I don't have one).
 Panasonic and Olympus cameras are triggered via their webserver interfaces, and the Canons by TCP/IP. Sony, Nikon and Fujifilm cameras also have some implementation of TCP/IP, but I don't have a camera to test. For Canon I tested it with my Canon M3, but it should work with other cameras too.
-Unfortunately, the PTP/IP protocol each camera uses is not documented very well, so many thing are camera or brand specific.
+Unfortunately, the PTP/IP protocol each camera uses is not documented very well, so many things are camera or brand specific.
 
 How to use
 Hardware: 
 You need a motorized/slider rail with a bipolar stepper motor, an ESP32 dev board, a stepper controller, and a power source for the controller. The motor I use is rated at 24v, but it works fine with an old laptop power brick that outputs 18V. If you want IR capabilities you will also need an IR LED and a 170 ohm resistor for the LED.
-To put it all together, connect the stepper to the controller, the ctroller to the ESP32 and power, and optionally put an IR LED. The pins are specified in the source file, but they can be changed if needed. Once this is done, just glue or attach via some other method a tripod head on the rail, and you should be done.
+To put it all together, connect the stepper to the controller, the controller to the ESP32 and power, and optionally put an IR LED. The pins are specified in the source file, but they can be changed if needed. Once this is done, just glue or attach via some other method a tripod head on the rail, and you should be done.
 
 Software:
 This is a platformio project, so you need to download Visual Studio Code and then the Platformio plugin. You can also use Arduino if you want, you will have to rename the .cpp file as .ino
