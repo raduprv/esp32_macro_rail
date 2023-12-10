@@ -16,6 +16,8 @@ In that page, click on Config SSID and enter the name and password of your Wi-Fi
 In the "Camera Config" page you can enter the camera IP address or the camera SSID/Password (for camera that don't want to connect to your Wi-Fi network, such as Olympus cameras). Canon and Panasonic can work both in AP mode or they can connect to your main network. Use them connected to your main network.
 On that page you can also use the Test buttons to see if everything works (the camera should take a picture). For Canon, use "PTP Shoot".
 
+If you wish to use your phone instead of a dedicated camera, then go to the BT settings and pair with the ESP keyboard. Put some macro lens on the phone, mount it on the rail, start your favorite camera app, set the fixed focus, and you are good to go.
+
 This project is useful if you need to trigger cameras remotely for other projects (motion detection, etc.). Feel free to reuse the code, but if you do, please let me know. If you wish to extend this project to include other cameras, please let me know also. Just open a new issue.
 If you have trouble getting it to work, have a suggestion or wish to tell me something, feel free to open an issue on Github, or e-mail me at radu.prv at gmail.com
 
