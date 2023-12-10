@@ -23,3 +23,10 @@ If you have trouble getting it to work, have a suggestion or wish to tell me som
 
 Credits: https://julianschroden.com/ for some documentation of the PTP/IP protocol used by Canon cameras. I also borrowed some code from this project, but I had to modify it quite a bit to work: https://github.com/1stCLord/cptpip
 I got the code for Canon and Nikon IR from some other projects, but unfortunately I can't find the source.
+
+If you want to buy the hardware from Ali Express, here are the parts you can buy. make sure to check different sellers, and look at the shipping price too. Get the 5cm one with 1mm pitch. Make sure to select the right product. Some come with the drivers, but it's usually cheaper to buy the drivers separately.
+
+Slider: https://www.aliexpress.com/item/1005006081438383.html
+Driver: https://www.aliexpress.com/item/1005004712884586.html
+ESP32: https://www.aliexpress.com/item/1005005704190069.html
+Optional: https://www.aliexpress.com/item/1005004659870460.html? (get the x4 objective). If you do, and have a 3d printer, check this out: https://www.printables.com/model/143754-microscope-adapter-for-4x-macro-photography-with-s There is a dragonfly eye image I posted in the project taken with this setup (and an Olympus M10 Mk II), stacked in Helicon Focus.
