@@ -1,4 +1,4 @@
-This project uses an ESP32 to control a bipolar stepper motor that moves a rail with a camera attacched to it for focus bracketing of small things. It can be used with a macro lens or with a microscope objective attached to the camera.
+This project uses an ESP32 to control a bipolar stepper motor that moves a rail with a camera attached to it for focus bracketing of small things. It can be used with a macro lens or with a microscope objective attached to the camera.
 Alternatively, you can mount the camera perpendicular to the rail for stuff like stop motion animation.
 The code can remotely trigger a cellphone via built in BT keyboard, Canon, Panasonic and Olympus cameras via Wi-Fi and Canon and Nikon cameras by IR (although I didn't test it on Nikon cameras because I don't have one).
 Panasonic and Olympus cameras are triggered via their webserver interfaces, and the Canons by TCP/IP. Sony, Nikon and Fujifilm cameras also have some implementation of TCP/IP, but I don't have a camera to test. For Canon I tested it with my Canon M3, but it should work with other cameras too.
