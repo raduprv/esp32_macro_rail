@@ -19,6 +19,7 @@ int callbacks_already_set=0;
 #define SHUTTER_PANASONIC_WIFI 4
 #define SHUTTER_OLYMPUS_WIFI 5
 #define SHUTTER_CANON_PTP_IP 6
+#define SHUTTER_SONY_CAMERA_REMOTE_API 7
 
 typedef struct config_struct {  
   char ssid[32];      // your network SSID (name)
@@ -484,7 +485,25 @@ int connect_ptpip(char* camera_ip)
   return result;
 }
 
-bool ptp_canon_shoot()
+void flush_events_buffer()
+{
+  char str[128];
+  int bytes;
+  int total_read=0;
+  
+  while(1)
+  {
+    bytes = event_connection.readBytes((uint8_t*)str, 100);
+    total_read+=bytes;
+    if(!bytes)break;
+  }
+
+  Serial.print("In flush events buffer, we read this many bytes:");
+  Serial.println(total_read);
+
+}
+
+bool ptp_canon_shoot(int cur_shot)
 {
   int i=0;
   Serial.println("Got ptp_canon_shoot()");
@@ -506,6 +525,10 @@ bool ptp_canon_shoot()
   }
 
   send_ptp_command_no_arg(0x9129);//StopImageCapture 
+
+  //if the events buffer gets full, bad things happen (disconnects)
+  if(!(cur_shot%5))
+  flush_events_buffer();
   
   Serial.println("Left ptp_canon_shoot()");
 
@@ -820,18 +843,11 @@ void connect_to_main_ap()
 void connect_to_camera_ap()
 {
 
-  //WiFi.mode(WIFI_STA);
-  //WiFi.onEvent(ConnectedToAP_Handler, ARDUINO_EVENT_WIFI_STA_CONNECTED);
-  //WiFi.onEvent(GotIP_Handler, ARDUINO_EVENT_WIFI_STA_GOT_IP);
-  //WiFi.onEvent(WiFiStationDisconnected, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
   WiFi.begin(config.camera_ssid, config.camera_pass);
   Serial.println("\nConnecting to camera WiFi");
-
-
-  //printWifiStatus();
 }
 
-void do_shutter()
+void do_shutter(int cur_shot)
 {
   if(config.shutter_type==SHUTTER_BT_PHONE)
   bleKeyboard.write(KEY_MEDIA_VOLUME_DOWN);
@@ -846,7 +862,7 @@ void do_shutter()
   panasonic_take_photo();
   else
   if(config.shutter_type==SHUTTER_CANON_PTP_IP)
-  ptp_canon_shoot();
+  ptp_canon_shoot(cur_shot);
 }
 
 void do_olympus_focus_bracketing()
@@ -860,6 +876,74 @@ void do_olympus_focus_bracketing()
     for(i=0;i<config.total_photos;i++)
     {
       olympus_take_photo();
+      delay(config.delay_after_shutter);
+      move_forward(config.steps_to_move);
+      delay(config.delay_after_move);
+    }
+
+  
+  Serial.println("Connecting back to main AP");
+  disconnect_from_ap();
+  connect_to_main_ap();
+}
+
+// JSON structures from API documentation
+char startRecMode[] = "{\"method\":\"startRecMode\",\"params\":[],\"id\":2,\"version\":\"1.0\"}"; // Go to Rec mode
+char startLiveview[] = "{\"method\":\"startLiveview\",\"params\":[],\"id\":2,\"version\":\"1.0\"}"; // Go to live view
+char setShootMode[] = "{\"method\":\"setShootMode\",\"params\":[\"still\"],\"id\":2,\"version\":\"1.0\"}"; // Set shot mode to "still"
+char actTakePicture[] = "{\"method\":\"actTakePicture\",\"params\":[],\"id\":2,\"version\":\"1.0\"}"; // Take a picture
+char setFocusMode[] = "{\"method\":\"setFocusMode\",\"params\":[\"AF-S\"],\"id\":2,\"version\":\"1.0\"}"; // Set focus mode to Single AF
+char setAutoPowerOff[] = "{\"method\":\"setAutoPowerOff\",\"params\":[{\"autoPowerOff\":60}],\"id\":2,\"version\":\"1.0\"}"; // Set automatic power off after 60 seconds
+
+void httpPost(char* j_request) {
+  // Creates domain name
+  char str[128];
+  //String server_name = "http://" + config.camera_ip + ":" + "10000" + "/sony/camera";
+  //sprintf(str,"http://%s:10000/sony/camera",config.camera_ip);
+  sprintf(str,"http://192.168.122.1:8080/sony/camera");
+  //sprintf(str,"http://192.168.122.1:10000/sony/camera");
+
+  
+  HTTPClient http;
+  // Domain name with IP, port and URL
+  http.begin(str);
+  // Specify content-type
+  http.addHeader("Content-Type", "application/json");
+  // Send HTTP POST
+  int http_response_code = http.POST(j_request);
+  // Free resources
+  Serial.print("HTTP Response code: ");
+  Serial.println(http_response_code);  
+  http.end();
+}
+
+void sony_shoot()
+{  
+  httpPost(actTakePicture);
+  //delay(1000);
+}
+
+void do_sony_api_focus_bracketing()
+{
+  int i;
+
+  disconnect_from_ap();
+  connect_to_camera_ap();
+
+  while(!connected)
+  {
+      delay(50);
+  }
+
+  httpPost(startRecMode);
+  delay(2000);
+  httpPost(setShootMode);
+  delay(400);  
+
+    delay(config.initial_delay);
+    for(i=0;i<config.total_photos;i++)
+    {
+      sony_shoot();
       delay(config.delay_after_shutter);
       move_forward(config.steps_to_move);
       delay(config.delay_after_move);
@@ -885,10 +969,16 @@ void do_focus_bracketing()
       return;
     }
 
+    if(config.shutter_type==SHUTTER_SONY_CAMERA_REMOTE_API)
+    {
+      do_sony_api_focus_bracketing();
+      return;
+    }
+
     delay(config.initial_delay);
     for(i=0;i<config.total_photos;i++)
     {
-      do_shutter();
+      do_shutter(i);
       delay(config.delay_after_shutter);
       move_forward(config.steps_to_move);
       delay(config.delay_after_move);
@@ -957,6 +1047,37 @@ int get_int_in_get(char* uri,char* my_string)
     return atoi(str);
 }
 
+void urldecode2(char *dst, const char *src)
+{
+        char a, b;
+        while (*src) {
+                if ((*src == '%') &&
+                    ((a = src[1]) && (b = src[2])) &&
+                    (isxdigit(a) && isxdigit(b))) {
+                        if (a >= 'a')
+                                a -= 'a'-'A';
+                        if (a >= 'A')
+                                a -= ('A' - 10);
+                        else
+                                a -= '0';
+                        if (b >= 'a')
+                                b -= 'a'-'A';
+                        if (b >= 'A')
+                                b -= ('A' - 10);
+                        else
+                                b -= '0';
+                        *dst++ = 16*a+b;
+                        src+=3;
+                } else if (*src == '+') {
+                        *dst++ = ' ';
+                        src++;
+                } else {
+                        *dst++ = *src++;
+                }
+        }
+        *dst++ = '\0';
+}
+
 int get_string_in_get(char* uri,char* my_string, char* returned_string, int max_len)
 {
     char* start_of_string;
@@ -982,6 +1103,8 @@ int get_string_in_get(char* uri,char* my_string, char* returned_string, int max_
     }
 
     returned_string[i]=0;
+
+    urldecode2(returned_string,returned_string);
     return 1;
 }
 
@@ -1005,7 +1128,7 @@ void print_camera_config()
 {
   char str [2048];
   sprintf(str,"HTTP/1.1 200 OK\nContent-Type: text/html\nConnection: close\n\n<!DOCTYPE HTML>\n<html>\n"
-    "<center><table><tr><td><form action='/apply_camera_stuff' method='get'><label for='set_camera_ip'>Camera IP:</label></td><td><input type='text' name='set_camera_ip' value='%s'></td></tr>"
+    "<center><table><tr><td><form action='/apply_camera_stuff' method='get' enctype='text/plain'><label for='set_camera_ip'>Camera IP:</label></td><td><input type='text' name='set_camera_ip' value='%s'></td></tr>"
     "\n<tr><td><label for='set_camera_ssid'>Camera SSID:</label></td><td><input type='text' name='set_camera_ssid' value='%s'></td></tr>"
     "\n<tr><td><label for='set_camera_pass'>Camera Pass:</label></td><td><input type='text' name='set_camera_pass' value='%s'></td></tr>"
     "\n<tr><td><input type='submit' value='Set'></form></td>"
@@ -1129,7 +1252,7 @@ void loop()
         else
         if (strstr(request_string, "ptp_shoot"))
         {
-          ptp_canon_shoot();
+          ptp_canon_shoot(5);
           print_camera_config();
           break;     
         } 
@@ -1162,7 +1285,22 @@ void loop()
           connect_to_main_ap();
           print_camera_config();
           break;          
-        }                          
+        }
+        else
+        if (strstr(request_string, "sony_test"))
+        {
+          client.println("HTTP/1.1 200 OK\nContent-Type: text/html\nConnection: close\n\n<!DOCTYPE HTML>\n<html>\nYou are now being disconnected from the main AP. The connection will be restored after the sequence is complete. Once done, click <a href='/'>here</a> to come back to this page.</html>");
+          client.stop();
+          Serial.println("Testing Sony...");
+          disconnect_from_ap();
+          connect_to_camera_ap();
+          sony_shoot();
+          Serial.println("Connecting back to main AP");
+          disconnect_from_ap();
+          connect_to_main_ap();
+          print_camera_config();
+          break;          
+        }                                     
         else
         if (strstr(request_string, "Begin"))
         do_focus_bracketing();
@@ -1290,7 +1428,10 @@ void loop()
           break;          
         }                
         
-
+        if (strstr(request_string, "flush_events"))
+        {
+          flush_events_buffer();   
+        }     
 
           // send a standard http response header
           final_string[0]=0;
@@ -1308,10 +1449,11 @@ void loop()
           "\n<option value='4'%s>Panasonic (WiFi)</option>"
           "\n<option value='5'%s>Olympus (WiFi)</option>"
           "\n<option value='6'%s>Canon PTP IP</option>"
+          "\n<option value='7'%s>Sony Camera Remote API</option>"
           "\n</select></td></tr>"
           "\n<tr><td colspan='2'><input type=\"submit\" value=\"Apply\"></td><tr></form></table>",config.initial_delay,config.delay_after_shutter,config.delay_after_move,config.total_photos,config.steps_to_move,
           config.shutter_type==0?" selected":"",config.shutter_type==1?" selected":"",config.shutter_type==2?" selected":"",config.shutter_type==3?" selected":"",config.shutter_type==4?" selected":"",
-          config.shutter_type==5?" selected":"",config.shutter_type==6?" selected":"");
+          config.shutter_type==5?" selected":"",config.shutter_type==6?" selected":"",config.shutter_type==7?" selected":"");
 
           strcat(final_string,header_string);
           strcat(final_string,status_string);
