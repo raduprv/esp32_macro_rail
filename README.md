@@ -1,7 +1,7 @@
 This project uses an ESP32 to control a bipolar stepper motor that moves a rail with a camera attached to it for focus bracketing of small things. It can be used with a macro lens or with a microscope objective attached to the camera.
 Alternatively, you can mount the camera perpendicular to the rail for stuff like stop motion animation.
 The code can remotely trigger a cellphone via built in BT keyboard, Canon, Sony, Panasonic and Olympus cameras via Wi-Fi and Canon and Nikon cameras by IR (although I didn't test it on Nikon cameras because I don't have one).
-Panasonic and Olympus cameras are triggered via their webserver interfaces, and the Canons by TCP/IP. Nikon and Fujifilm cameras also have some implementation of TCP/IP, but I don't have a camera to test. For Canon I tested it with my Canon M3, but it should work with other cameras too.
+Panasonic, Sony and Olympus cameras are triggered via their webserver interfaces, and the Canons by TCP/IP. Nikon and Fujifilm cameras also have some implementation of TCP/IP, but I don't have a camera to test. For Canon I tested it with my Canon M3, but it should work with other cameras too.
 Unfortunately, the PTP/IP protocol each camera uses is not documented very well, so many things are camera or brand specific.
 
 How to use
@@ -21,8 +21,8 @@ If you wish to use your phone instead of a dedicated camera, then go to the BT s
 This project is useful if you need to trigger cameras remotely for other projects (motion detection, etc.). Feel free to reuse the code, but if you do, please let me know. If you wish to extend this project to include other cameras, please let me know also. Just open a new issue.
 If you have trouble getting it to work, have a suggestion or wish to tell me something, feel free to open an issue on Github, or e-mail me at radu.prv at gmail.com
 
-Credits: https://julianschroden.com/ for some documentation of the PTP/IP protocol used by Canon cameras. I also borrowed some code from this project, but I had to modify it quite a bit to work: https://github.com/1stCLord/cptpip
-I got the code for Canon and Nikon IR from some other projects, but unfortunately I can't find the source.
+Credits: https://julianschroden.com/ for some documentation of the PTP/IP protocol used by Canon cameras. I also borrowed some code from this project, but I had to modify it quite a bit to work: https://github.com/1stCLord/cptpip . I got (and slightly modified) the Sony code from here: https://github.com/palmacas/SonyRemoteTimelapse
+The code for Canon and Nikon IR is borrowed from some other projects, but unfortunately I can't find the source.
 
 If you want to buy the hardware from Ali Express, here are the parts you can buy. make sure to check different sellers, and look at the shipping price too. Get the 5cm one with 1mm pitch. Make sure to select the right product. Some come with the drivers, but it's usually cheaper to buy the drivers separately.
 
