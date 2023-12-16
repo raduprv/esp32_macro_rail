@@ -33,3 +33,5 @@ Driver: https://www.aliexpress.com/item/1005004712884586.html
 ESP32: https://www.aliexpress.com/item/1005005704190069.html
 
 Optional: https://www.aliexpress.com/item/1005004659870460.html? (get the x4 objective). If you do, and have a 3d printer, check this out: https://www.printables.com/model/143754-microscope-adapter-for-4x-macro-photography-with-s There is a dragonfly eye image I posted in the project taken with this setup (and an Olympus M10 Mk II), stacked in Helicon Focus.
+
+For the actual focus stacking part, I use Helicon Focus, which is very fast and good, but it's not free. If you want a free, command line alternative, you can try this: https://github.com/PetteriAimonen/focus-stack It's not as good or fast as Helicon Focus, but sometimes you can get very good results with it.
