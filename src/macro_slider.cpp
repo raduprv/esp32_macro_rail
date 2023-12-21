@@ -20,6 +20,7 @@ int callbacks_already_set=0;
 #define SHUTTER_OLYMPUS_WIFI 5
 #define SHUTTER_CANON_PTP_IP 6
 #define SHUTTER_SONY_CAMERA_REMOTE_API 7
+#define SHUTTER_NIKON_PTP_IP 8
 
 typedef struct config_struct {  
   char ssid[32];      // your network SSID (name)
@@ -63,9 +64,6 @@ char request_string[256];
 //char config.camera_pass[] = "43452507";   // your network password
 
 
-// initialize the stepper library on pins 8 through 11:
-//Stepper myStepper(stepsPerRevolution, 13, 12, 14, 27);
-//Stepper myStepper(stepsPerRevolution, 32, 33, 25, 26);
 
 #define STEP_PIN 13
 #define DIR_PIN 12
@@ -287,7 +285,7 @@ bool cptpipOpenSession()
   return result;
 }
 
-uint16_t send_ptp_command_no_arg(uint16_t command)
+uint16_t send_ptp_command_1_arg(uint16_t command, int arg)
 {
   uint16_t response=0;
 
@@ -313,7 +311,7 @@ uint16_t send_ptp_command_no_arg(uint16_t command)
   request.cmd.flag = 1;
   request.cmd.code = command;
   request.cmd.transactionid = sessionId;
-  request.param = 1;
+  request.param = arg;
 
   if(command_connection.write((uint8_t*)&request, request.cmd.header.length) == request.cmd.header.length)
   {
@@ -342,6 +340,12 @@ uint16_t send_ptp_command_no_arg(uint16_t command)
     Serial.println("Hmm, pula write....");
   }
 
+  return response;
+}
+
+uint16_t send_ptp_command_no_arg(uint16_t command)
+{  
+  uint16_t response=send_ptp_command_1_arg(command,1);
   return response;
 }
 
@@ -392,7 +396,7 @@ int set_property_value(int property, int value)
   return 1;
 }
 
-int connect_ptpip(char* camera_ip)
+int connect_ptpip(const char* camera_ip)
 {
   bool result = false;
   int i;
@@ -476,12 +480,6 @@ int connect_ptpip(char* camera_ip)
 
   Serial.println("PTP IP all good...");
 
-  //if Canon
-  set_property_value(0xd1b0,8);//shoot mode/live view
-  set_property_value(0xd11c,0x2);//destination to SD (rather than ram). Not needed for M3 but might be needed for others.
-  send_ptp_command_no_arg(0x9114);//SetRemoteMode
-  send_ptp_command_no_arg(0x9115);//SetEventMode
-
   return result;
 }
 
@@ -508,9 +506,24 @@ bool ptp_canon_shoot(int cur_shot)
   int i=0;
   Serial.println("Got ptp_canon_shoot()");
 
-  if(!command_connection)connect_ptpip(config.camera_ip);
+  if(!command_connection)
+    {
+      connect_ptpip(config.camera_ip);
+      set_property_value(0xd1b0,8);//shoot mode/live view
+      set_property_value(0xd11c,0x2);//destination to SD (rather than ram). Not needed for M3 but might be needed for others.
+      send_ptp_command_no_arg(0x9114);//SetRemoteMode
+      send_ptp_command_no_arg(0x9115);//SetEventMode
+    }  
   else
-  if(!command_connection.connected())connect_ptpip(config.camera_ip);
+  if(!command_connection.connected())
+    {
+      connect_ptpip(config.camera_ip);
+      set_property_value(0xd1b0,8);//shoot mode/live view
+      set_property_value(0xd11c,0x2);//destination to SD (rather than ram). Not needed for M3 but might be needed for others.
+      send_ptp_command_no_arg(0x9114);//SetRemoteMode
+      send_ptp_command_no_arg(0x9115);//SetEventMode
+    }  
+
 
 
   while(send_ptp_command_no_arg(0x9128)==0x2019)//While StartImageCapture returns busy
@@ -847,6 +860,74 @@ void connect_to_camera_ap()
   Serial.println("\nConnecting to camera WiFi");
 }
 
+void test_nikon()
+{
+  //this is a manual test/debug
+  client.println("HTTP/1.1 200 OK\nContent-Type: text/html\nConnection: close\n\n<!DOCTYPE HTML>\n<html>\nYou are now being disconnected from the main AP. The connection will be restored after the sequence is complete. Once done, click <a href='/'>here</a> to come back to this page.</html>");
+  client.stop();  
+  disconnect_from_ap();
+  connect_to_camera_ap();
+
+  for(int i=0;i<50;i++)
+  {
+    if(connected)break;
+    delay(100);
+  }
+
+  Serial.println("Attempting PTP connection");
+  connect_ptpip("192.168.0.10");
+
+  Serial.println("Sending shoot command");
+  send_ptp_command_1_arg(0x9201	,0xfffffffe);//live view
+  delay(100);
+  send_ptp_command_1_arg(0x9207,0xffffffff);//Nikon capture
+
+  /*
+  delay(100);
+  send_ptp_command_1_arg(0x920c,0);//Terminate capture
+  
+  send_ptp_command_1_arg(0x100e,0xffffffff);//Nikon capture
+
+  delay(2000);
+  send_ptp_command_1_arg(0x100e,0);//PTP capture
+
+
+  delay(3000);
+*/
+  Serial.println("Connecting back to main AP");
+  disconnect_from_ap();
+  connect_to_main_ap();  
+}
+
+bool ptp_nikon_shoot(int cur_shot)
+{
+  int i=0;
+  Serial.println("Got ptp_nikon_shoot()");
+
+  if(!command_connection)
+    {
+      connect_ptpip("192.168.0.10");
+      send_ptp_command_1_arg(0x9201	,0xfffffffe);//live view    
+    }  
+  else
+  if(!command_connection.connected())
+    {
+      connect_ptpip("192.168.0.10");
+      send_ptp_command_1_arg(0x9201	,0xfffffffe);//live view
+    }  
+
+  send_ptp_command_1_arg(0x100e,0);//PTP capture
+
+  //if the events buffer gets full, bad things happen (disconnects)
+  if(!(cur_shot%5))
+  flush_events_buffer();
+  
+  Serial.println("Left ptp_nikon_shoot()");
+
+  return 0;
+}
+
+
 void do_shutter(int cur_shot)
 {
   if(config.shutter_type==SHUTTER_BT_PHONE)
@@ -955,6 +1036,41 @@ void do_sony_api_focus_bracketing()
   connect_to_main_ap();
 }
 
+void do_nikon_ptp_bracketing()
+{
+  int i;
+
+  disconnect_from_ap();
+  connect_to_camera_ap();
+
+  for(i=0;i<30;i++)
+  {
+    if(connected)
+    break;  
+    delay(100);
+  }
+
+  if(i==30)goto nikon_ptp_end;
+
+  connect_ptpip("192.168.0.10");
+  send_ptp_command_1_arg(0x9201	,0xfffffffe);//live view     
+
+
+  delay(config.initial_delay);
+  for(i=0;i<config.total_photos;i++)
+  {
+    ptp_nikon_shoot(i);
+    delay(config.delay_after_shutter);
+    move_forward(config.steps_to_move);
+    delay(config.delay_after_move);
+  }
+
+  nikon_ptp_end:
+  Serial.println("Connecting back to main AP");
+  disconnect_from_ap();
+  connect_to_main_ap();
+}
+
 void do_focus_bracketing()
 {
 
@@ -972,6 +1088,12 @@ void do_focus_bracketing()
     if(config.shutter_type==SHUTTER_SONY_CAMERA_REMOTE_API)
     {
       do_sony_api_focus_bracketing();
+      return;
+    }
+
+    if(config.shutter_type==SHUTTER_NIKON_PTP_IP)
+    {
+      do_nikon_ptp_bracketing();
       return;
     }
 
@@ -1140,7 +1262,9 @@ void print_camera_config()
     "\n<td><form action='/do_panasonic_pairing' method='get'><input type='submit' value='Pair Panasonic'></form></td>"
     "\n<td><form action='/panasonic_test' method='get'><input type='submit' value='Test Panasonic'></form></td>"
     "\n<td><form action='/oly_test' method='get'><input type='submit' value='Test Olympus'></form></td>"
-    "\n<td><form action='/ptp_shoot' method='get'><input type='submit' value='PTP Shoot'></form></td>"
+    "\n<td><form action='/ptp_shoot' method='get'><input type='submit' value='Canon PTP Shoot'></form></td>"
+    "\n<td><form action='/sony_test' method='get'><input type='submit' value='Test Sony'></form></td>"
+    "\n<td><form action='/nikon_test' method='get'><input type='submit' value='Nikon PTP Shoot'></form></td>"
     "</center></table>"
     "</html>",config.camera_ip,config.camera_ssid,config.camera_pass);
     client.println(str);
@@ -1270,7 +1394,15 @@ void loop()
           Serial.println("Testing Panasonic...");
           print_camera_config();
           break;          
-        } 
+        }
+        else
+        if (strstr(request_string, "nikon_test"))
+        {          
+          Serial.println("Testing Nikon...");
+          test_nikon();
+          print_camera_config();
+          break;          
+        }          
         else
         if (strstr(request_string, "oly_test"))
         {
@@ -1294,7 +1426,17 @@ void loop()
           Serial.println("Testing Sony...");
           disconnect_from_ap();
           connect_to_camera_ap();
+          while(!connected)
+          {
+            delay(50);
+          }
+
+          httpPost(startRecMode);
+          delay(2000);
+          httpPost(setShootMode);
+          delay(400);            
           sony_shoot();
+
           Serial.println("Connecting back to main AP");
           disconnect_from_ap();
           connect_to_main_ap();
@@ -1450,10 +1592,11 @@ void loop()
           "\n<option value='5'%s>Olympus (WiFi)</option>"
           "\n<option value='6'%s>Canon PTP IP</option>"
           "\n<option value='7'%s>Sony Camera Remote API</option>"
+          "\n<option value='8'%s>Nikon PTP IP</option>"
           "\n</select></td></tr>"
           "\n<tr><td colspan='2'><input type=\"submit\" value=\"Apply\"></td><tr></form></table>",config.initial_delay,config.delay_after_shutter,config.delay_after_move,config.total_photos,config.steps_to_move,
           config.shutter_type==0?" selected":"",config.shutter_type==1?" selected":"",config.shutter_type==2?" selected":"",config.shutter_type==3?" selected":"",config.shutter_type==4?" selected":"",
-          config.shutter_type==5?" selected":"",config.shutter_type==6?" selected":"",config.shutter_type==7?" selected":"");
+          config.shutter_type==5?" selected":"",config.shutter_type==6?" selected":"",config.shutter_type==7?" selected":"",config.shutter_type==8?" selected":"");
 
           strcat(final_string,header_string);
           strcat(final_string,status_string);
