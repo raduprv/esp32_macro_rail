@@ -69,6 +69,11 @@ char request_string[256];
 #define DIR_PIN 12
 #define ENABLE_PIN 26
 #define IR_LED_PIN 15
+#define LIGHT_1_PIN 2
+#define LIGHT_2_PIN 4
+
+int light_1_state=0;
+int light_2_state=0;
 
 WiFiClient command_connection;
 WiFiClient event_connection;
@@ -152,6 +157,13 @@ struct  __attribute__((packed)) cmd_open_request
 {
   struct cmd_request cmd;
   uint32_t param;
+};
+
+struct  __attribute__((packed)) cmd_set_param_16b
+{
+  struct cmd_request cmd;
+  uint32_t prop;
+  uint32_t value;
 };
 
 void print_hex_string(char* start, int len)
@@ -284,7 +296,58 @@ bool cptpipOpenSession()
   }
   return result;
 }
+int ptp_set_property_value(int property, int value)
+{
+  struct cmd_open_request request;
 
+  request.cmd.header.length = sizeof(request);
+  request.cmd.header.type = T_CmdRequest;
+  request.cmd.flag = 2;
+  request.cmd.code = C_SetProp;
+  request.cmd.transactionid = sessionId;
+  request.param = property;
+
+  char data_buffer[20]={0x14,0,0,0,9,0,0,0,0x18,0,0,0,0x08,0,0,0,0,0,0,0};
+  *((uint32_t*)data_buffer+2)=sessionId;
+  char end_data_buffer[20]={0x14,00,00,00,0x0c,00,00,00,0x18,00,00,00,0x08,00,00,00,02,0xd1};
+  *((uint32_t*)end_data_buffer+2)=sessionId;
+  *((uint32_t*)end_data_buffer+4)=value;
+
+  //18000000,0c000000,93000000,0c000000,b0d10000,08000000
+
+   if(command_connection.write((uint8_t*)&request, sizeof(request)) != sizeof(request))
+   {
+    Serial.println("Failed to send data in canon_set_property_value");
+    return 0;
+   }
+
+   if(command_connection.write((uint8_t*)&data_buffer, 20) != 20)
+   {
+    Serial.println("Failed to send data in set_property_value");
+    return 0;
+   }
+
+   if(command_connection.write((uint8_t*)&end_data_buffer, 20) != 20)
+   {
+    Serial.println("Failed to send data in set_property_value");
+    return 0;
+   }
+
+    if(cptpipGetResponse(command_connection))
+    {      
+      struct ptpip_header *header = (struct ptpip_header *)ptp_read_buffer;
+      Serial.print("In set prop, response is ");
+      uint16_t response=*((uint16_t*)ptp_read_buffer+4);
+      Serial.println(response,HEX);  
+    }
+    else 
+    {
+      Serial.println("Hmm, no response for set prop");
+      return 0;
+    }   
+
+  return 1;
+}
 uint16_t send_ptp_command_1_arg(uint16_t command, int arg)
 {
   uint16_t response=0;
@@ -349,7 +412,7 @@ uint16_t send_ptp_command_no_arg(uint16_t command)
   return response;
 }
 
-int set_property_value(int property, int value)
+int canon_set_property_value(int property, int value)
 {
   char operation_buffer[18]={0x12,00,00,00,06,00,00,00,02,00,00,00,0x10,0x91,00,00,00,00};
   *((uint32_t*)operation_buffer+4)=sessionId;
@@ -364,7 +427,7 @@ int set_property_value(int property, int value)
 
    if(command_connection.write((uint8_t*)&operation_buffer, 18) != 18)
    {
-    Serial.println("Failed to send data in set_property_value");
+    Serial.println("Failed to send data in canon_set_property_value");
     return 0;
    }
 
@@ -395,6 +458,8 @@ int set_property_value(int property, int value)
 
   return 1;
 }
+
+
 
 int connect_ptpip(const char* camera_ip)
 {
@@ -509,8 +574,8 @@ bool ptp_canon_shoot(int cur_shot)
   if(!command_connection)
     {
       connect_ptpip(config.camera_ip);
-      set_property_value(0xd1b0,8);//shoot mode/live view
-      set_property_value(0xd11c,0x2);//destination to SD (rather than ram). Not needed for M3 but might be needed for others.
+      canon_set_property_value(0xd1b0,8);//shoot mode/live view
+      canon_set_property_value(0xd11c,0x2);//destination to SD (rather than ram). Not needed for M3 but might be needed for others.
       send_ptp_command_no_arg(0x9114);//SetRemoteMode
       send_ptp_command_no_arg(0x9115);//SetEventMode
     }  
@@ -518,8 +583,8 @@ bool ptp_canon_shoot(int cur_shot)
   if(!command_connection.connected())
     {
       connect_ptpip(config.camera_ip);
-      set_property_value(0xd1b0,8);//shoot mode/live view
-      set_property_value(0xd11c,0x2);//destination to SD (rather than ram). Not needed for M3 but might be needed for others.
+      canon_set_property_value(0xd1b0,8);//shoot mode/live view
+      canon_set_property_value(0xd11c,0x2);//destination to SD (rather than ram). Not needed for M3 but might be needed for others.
       send_ptp_command_no_arg(0x9114);//SetRemoteMode
       send_ptp_command_no_arg(0x9115);//SetEventMode
     }  
@@ -652,6 +717,7 @@ void WiFiStationDisconnected(WiFiEvent_t wifi_event, WiFiEventInfo_t wifi_info) 
   disconnected=1;
   //server.end();
 }
+
 
 void nikon_pulse_on(unsigned long duration) 
 {
@@ -849,7 +915,7 @@ void connect_to_main_ap()
     callbacks_already_set=1;
   }
   WiFi.begin(config.ssid, config.pass);
-  Serial.println("\nConnecting to main WiFi Network ..");  
+  Serial.println("\nConnecting to main WiFi Network ..");    
   
 }
 
@@ -864,7 +930,9 @@ void test_nikon()
 {
   //this is a manual test/debug
   client.println("HTTP/1.1 200 OK\nContent-Type: text/html\nConnection: close\n\n<!DOCTYPE HTML>\n<html>\nYou are now being disconnected from the main AP. The connection will be restored after the sequence is complete. Once done, click <a href='/'>here</a> to come back to this page.</html>");
-  client.stop();  
+  client.stop();
+  strcpy(config.camera_pass,"NikonCoolpix");
+  strcpy(config.camera_ssid,"NikonS960040007605");
   disconnect_from_ap();
   connect_to_camera_ap();
 
@@ -880,20 +948,17 @@ void test_nikon()
   Serial.println("Sending shoot command");
   send_ptp_command_1_arg(0x9201	,0xfffffffe);//live view
   delay(100);
+  ptp_set_property_value(0x5008,3500);//zoom
+  delay(1000);
+  ptp_set_property_value(0x5008,4600);//zoom
+  ptp_set_property_value(0x5008,0);//zoom
+  ptp_set_property_value(0x5008,1);//zoom
+  send_ptp_command_1_arg(0x9207,0xffffffff);//Nikon capture
+  delay(100);
+  ptp_set_property_value(0x5006,0);//rbg gain
+
   send_ptp_command_1_arg(0x9207,0xffffffff);//Nikon capture
 
-  /*
-  delay(100);
-  send_ptp_command_1_arg(0x920c,0);//Terminate capture
-  
-  send_ptp_command_1_arg(0x100e,0xffffffff);//Nikon capture
-
-  delay(2000);
-  send_ptp_command_1_arg(0x100e,0);//PTP capture
-
-
-  delay(3000);
-*/
   Serial.println("Connecting back to main AP");
   disconnect_from_ap();
   connect_to_main_ap();  
@@ -1119,9 +1184,14 @@ void setup()
   pinMode(DIR_PIN, OUTPUT);
   pinMode(ENABLE_PIN, OUTPUT);
   pinMode(IR_LED_PIN, OUTPUT);
+  pinMode(LIGHT_1_PIN, OUTPUT);
+  pinMode(LIGHT_2_PIN, OUTPUT);
+  
 
   digitalWrite(ENABLE_PIN, HIGH);//disable driver to not waste power
   digitalWrite(IR_LED_PIN, LOW);//disable IR LED to not waste power
+  digitalWrite(LIGHT_1_PIN, LOW);//disable lights to not waste power
+  digitalWrite(LIGHT_2_PIN, LOW);//disable lights to not waste power
 
   //Initialize serial and wait for port to open:
   Serial.begin(115200);
@@ -1455,7 +1525,27 @@ void loop()
         if (strstr(request_string, "load_config"))
         {
             load_config();
-        }                
+        }
+        else
+        if (strstr(request_string, "toggle_light_1"))
+        {
+            if(light_1_state==0)
+            digitalWrite(LIGHT_1_PIN, HIGH);
+            else
+            digitalWrite(LIGHT_1_PIN, LOW);
+
+            light_1_state=!light_1_state;
+        }
+        else
+        if (strstr(request_string, "toggle_light_2"))
+        {
+            if(light_2_state==0)
+            digitalWrite(LIGHT_2_PIN, HIGH);
+            else
+            digitalWrite(LIGHT_2_PIN, LOW);
+
+            light_2_state=!light_2_state;
+        }                  
         else        
         if (strstr(request_string, "set_initial_delay="))
         {
@@ -1605,11 +1695,11 @@ void loop()
           "\n<td><form action=\"/load_config\" method=\"get\"><input type=\"submit\" value=\"Load Config\"></form></td>"
           "\n<td><form action='/config_ssid' method='get'><input type='submit' value='Config SSID'></form></td>"
           "\n<td><form action='/camera_config' method='get'><input type='submit' value='Config Camera'></form></td>"
-          "</tr></table></html>");          
+          "</tr></table>");          
           strcat(final_string,"\n<table><tr><td><form action=\"/move_backward=1000\" method=\"get\"><input type=\"submit\" value=\"<<<\"></form></td>"
           "<td><form action=\"/move_backward=100\" method=\"get\"><input type=\"submit\" value=\"<<\"></form></td><td><form action=\"/move_backward=5\" method=\"get\"><input type=\"submit\" value=\"<\"></form></td>"
           "<form action=\"/Begin\" method=\"get\"><td><input type=\"submit\" value=\"Begin\"></form></td><td><form action=\"/move_forward=5\" method=\"get\"><input type=\"submit\" value=\">\"></form></td><td><form action=\"/move_forward=100\" method=\"get\"><input type=\"submit\" value=\">>\"></form></td>"
-          "<td><form action=\"/move_forward=1000\" method=\"get\"><input type=\"submit\" value=\">>>\"></form></td></tr></table>");
+          "<td><form action=\"/move_forward=1000\" method=\"get\"><input type=\"submit\" value=\">>>\"></form></td></tr><tr><td colspan='3'><form action=\"/toggle_light_1\" method=\"get\"><input type=\"submit\" value=\"Toggle light 1\"></form></td><td colspan='4'><form action=\"/toggle_light_2\" method=\"get\"><input type=\"submit\" value=\"Toggle light 2\"></form></td></tr></table>");
           /*
           sprintf(status_string,"<table><tr><td><form action='/' method=\"get\"><label for=\"set_camera_ip\">Camera IP:</label></td><td><input type=\"text\" name=\"set_camera_ip\" value=\"%s\"></td></tr>"
           "\n<tr><td><label for=\"set_camera_ssid\">Camera SSID:</label></td><td><input type=\"text\" name=\"set_camera_ssid\" value=\"%s\"></td></tr>"
